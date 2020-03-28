@@ -83,7 +83,7 @@ namespace Aocl
         }
 
         /// <summary>
-        /// Returns the logical internal index represented by the virual index. The logical index is a <see cref="ValueTuple{T1, T2}"/> representing a list and position in that list.
+        /// Returns the logical internal index represented by the virtual index. The logical index is a <see cref="ValueTuple{T1, T2}"/> representing a list and position in that list.
         /// </summary>
         /// <param name="index">
         /// The virtual index to be converted to a logical index.
