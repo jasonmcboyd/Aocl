@@ -6,7 +6,7 @@
     <IncludeSymbols>true</IncludeSymbols>
     <PackageDescription>A collection that supports thread-safe append-only writes and lock-free random access reads.</PackageDescription>
     <PackageId>Aocl</PackageId>
-    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>appendonly;append-only;collection;collections;concurrent;eventsourcing;event-sourcing;ireadonlylist;list;log;readonlylist;threadsafe;thread-safe;thread safe</PackageTags>
     <RepositoryBranch>master</RepositoryBranch>
     <RepositoryUrl>https://github.com/jasonmcboyd/Aocl</RepositoryUrl>
