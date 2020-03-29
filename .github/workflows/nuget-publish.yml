@@ -18,5 +18,3 @@ jobs:
         run: dotnet pack -c Release -o NuGet ./src/Aocl
       - name: Publish NuGet Package
         run: dotnet nuget push --api-key ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json ./NuGet/Aocl*.nupkg
-      - name: Publish Symbols Package
-        run: dotnet nuget push --api-key ${{secrets.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json ./NuGet/Aocl*.snupkg
