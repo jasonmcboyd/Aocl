@@ -50,7 +50,8 @@ namespace Aocl
 
             InitialListBitness = initialBitness;
             NextListBitness = initialBitness;
-            InternalLists = new List<List<T>>
+            var capacity = 32 - initialBitness + 1;
+            InternalLists = new List<List<T>>(capacity)
             {
                 new List<T>(BitnessToSize(InitialListBitness))
             };
