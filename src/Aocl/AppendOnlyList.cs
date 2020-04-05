@@ -7,7 +7,7 @@ using System.Threading;
 namespace Aocl
 {
     /// <summary>
-    /// Represents a strongly typed list of objects with lock-free reads by index or enumeration, and thread-safe append-only writes.
+    /// Represents a strongly typed collection of objects with lock-free reads by index or enumeration, and thread-safe append-only writes.
     /// </summary>
     public class AppendOnlyList<T> : IAppendOnlyList<T>
     {
@@ -20,56 +20,56 @@ namespace Aocl
         /// Initializes a new instance of the <see cref="AppendOnlyList{T}"/> class contains elements copied from <paramref name="collection"/>.
         /// </summary>
         /// <param name="collection">
-        /// The collection whose elements are copied to the new list.
+        /// The collection whose elements are copied to the new <see cref="AppendOnlyList{T}"/>.
         /// </param>
         public AppendOnlyList(IEnumerable<T> collection) : this(collection, 4) { }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="AppendOnlyList{T}"/> class that is empty and that has an initial capacity of 2^<paramref name="initialBitness"/>.
+        /// Initializes a new instance of the <see cref="AppendOnlyList{T}"/> class that is empty and that has an initial capacity of 2^<paramref name="bitness"/>.
         /// </summary>
-        /// <param name="initialBitness">
-        /// Use to calculate the initial capacity of the list. Initial capacity is 2^<paramref name="initialBitness"/>.
+        /// <param name="bitness">
+        /// Calculates the initial capacity of the <see cref="AppendOnlyList{T}"/>. Initial capacity is 2^<paramref name="bitness"/>.
         /// </param>
-        public AppendOnlyList(int initialBitness) : this(Enumerable.Empty<T>(), initialBitness) { }
+        public AppendOnlyList(int bitness) : this(Enumerable.Empty<T>(), bitness) { }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="AppendOnlyList{T}"/> class contains elements copied from <paramref name="collection"/> and that has an initial capacity of 2^<paramref name="initialBitness"/>.
+        /// Initializes a new instance of the <see cref="AppendOnlyList{T}"/> class contains elements copied from <paramref name="collection"/> and that has an initial capacity of 2^<paramref name="bitness"/>.
         /// </summary>
         /// <param name="collection">
-        /// The collection whose elements are copied to the new list.
+        /// The collection whose elements are copied to the new <see cref="AppendOnlyList{T}"/>.
         /// </param>
-        /// <param name="initialBitness">
-        /// Use to calculate the initial capacity of the list. Initial capacity is 2^<paramref name="initialBitness"/>.
+        /// <param name="bitness">
+        /// Calculates the initial capacity of the <see cref="AppendOnlyList{T}"/>. Initial capacity is 2^<paramref name="bitness"/>.
         /// </param>
-        public AppendOnlyList(IEnumerable<T> collection, int initialBitness = 4)
+        public AppendOnlyList(IEnumerable<T> collection, int bitness = 4)
         {
-            if (initialBitness < 1)
+            if (bitness < 1)
             {
-                throw new ArgumentOutOfRangeException("Must be greater than zero.", nameof(initialBitness));
+                throw new ArgumentOutOfRangeException("Must be greater than zero.", nameof(bitness));
             }
 
-            InitialListBitness = initialBitness;
-            NextListBitness = initialBitness;
-            var capacity = 32 - initialBitness + 1;
-            InternalLists = new List<List<T>>(capacity)
+            Bitness = bitness;
+            NextPartitionBitness = bitness;
+            var capacity = 32 - bitness + 1;
+            Partitions = new List<List<T>>(capacity)
             {
-                new List<T>(BitnessToSize(InitialListBitness))
+                new List<T>(BitnessToSize(Bitness))
             };
             AppendRange(collection);
         }
 
         /// <summary>
-        /// Size (in bits) of the first list.
+        /// Size (in bits) of the first partition.
         /// </summary>
-        private int InitialListBitness { get; }
+        private int Bitness { get; }
 
         /// <summary>
-        /// Size (in bits) of the next list to be created.
+        /// Size (in bits) of the next partition to be created.
         /// </summary>
-        private int NextListBitness { get; set; }
+        private int NextPartitionBitness { get; set; }
 
         /// <summary>
-        /// Calcualtes size from bits. Size is 2 ^ <see cref="bitness"/>.
+        /// Calcualtes size from bits. Size is 2^<see cref="bitness"/>.
         /// </summary>
         /// <param name="bitness">
         /// Number of bits.
@@ -84,30 +84,30 @@ namespace Aocl
         }
 
         /// <summary>
-        /// Returns the logical internal index represented by the virtual index. The logical index is a <see cref="ValueTuple{T1, T2}"/> representing a list and position in that list.
+        /// Returns the logical internal index represented by the virtual index. The logical index is a <see cref="ValueTuple{T1, T2}"/> representing a partition and offset.
         /// </summary>
         /// <param name="index">
         /// The virtual index to be converted to a logical index.
         /// </param>
-        private (int, int) VirtualIndexToInternalIndex(int index)
+        private (int Partition, int Offset) VirtualIndexToInternalIndex(int index)
         {
-            if (index < InternalLists[0].Count)
+            if (index < Partitions[0].Count)
             {
                 return (0, index);
             }
             var mostSignificantBitIndex = (int)Math.Log(index, 2);
-            return (mostSignificantBitIndex - (InitialListBitness - 1), index - (1 << mostSignificantBitIndex));
+            return (mostSignificantBitIndex - (Bitness - 1), index - (1 << mostSignificantBitIndex));
         }
 
         /// <summary>
-        /// Collection of lists that hold all the objects. By only appending new lists rather than copying objects to a new list when the old list is outgrown I am able to offer lock-free reads.
+        /// Collection of collections that hold all the objects. By only appending new collections rather than copying objects to a new collection when the old collection is outgrown I am able to offer lock-free reads.
         /// </summary>
-        private List<List<T>> InternalLists { get; }
+        private List<List<T>> Partitions { get; }
 
         /// <summary>
-        /// Helper method that returns the current (always the last) list in <see cref="InternalLists"/>.
+        /// Helper method that returns the current (always the last) collection in <see cref="Partitions"/>.
         /// </summary>
-        private List<T> CurrentInternalList => InternalLists[InternalLists.Count - 1];
+        private List<T> CurrentPartition => Partitions[Partitions.Count - 1];
 
         /// <summary>
         /// Lock used to ensure only one writer at a time.
@@ -125,11 +125,11 @@ namespace Aocl
             AppendLock.EnterWriteLock();
             try
             {
-                var current = CurrentInternalList;
+                var current = CurrentPartition;
                 if (current.Count == current.Capacity)
                 {
-                    AddInternalList();
-                    current = CurrentInternalList;
+                    AddPartition();
+                    current = CurrentPartition;
                 }
                 current.Add(value);
                 Count++;
@@ -151,13 +151,13 @@ namespace Aocl
             AppendLock.EnterWriteLock();
             try
             {
-                var current = CurrentInternalList;
+                var current = CurrentPartition;
                 foreach (var value in values)
                 {
                     if (current.Count == current.Capacity)
                     {
-                        AddInternalList();
-                        current = CurrentInternalList;
+                        AddPartition();
+                        current = CurrentPartition;
                     }
                     current.Add(value);
                     Count++;
@@ -170,13 +170,13 @@ namespace Aocl
         }
 
         /// <summary>
-        /// Adds a new list to the collection of lists.
+        /// Adds a new partition and handles the "bookkeeping" associated with adding a partition.
         /// </summary>
-        private void AddInternalList()
+        private void AddPartition()
         {
-            var newList = new List<T>(BitnessToSize(NextListBitness));
-            InternalLists.Add(newList);
-            NextListBitness++;
+            var partition = new List<T>(BitnessToSize(NextPartitionBitness));
+            Partitions.Add(partition);
+            NextPartitionBitness++;
         }
 
         /// <summary>
@@ -187,14 +187,14 @@ namespace Aocl
             var internalIndex = VirtualIndexToInternalIndex(Count - 1);
             for (int i = 0; i < internalIndex.Item1; i++)
             {
-                for (int j = 0; j < InternalLists[i].Count; j++)
+                for (int j = 0; j < Partitions[i].Count; j++)
                 {
-                    yield return InternalLists[i][j];
+                    yield return Partitions[i][j];
                 }
             }
             for (int j = 0; j <= internalIndex.Item2; j++)
             {
-                yield return InternalLists[internalIndex.Item1][j];
+                yield return Partitions[internalIndex.Item1][j];
             }
         }
 
@@ -213,7 +213,7 @@ namespace Aocl
                     throw new IndexOutOfRangeException();
                 }
                 var internalIndex = VirtualIndexToInternalIndex(index);
-                return InternalLists[internalIndex.Item1][internalIndex.Item2];
+                return Partitions[internalIndex.Partition][internalIndex.Offset];
             }
         }
 
