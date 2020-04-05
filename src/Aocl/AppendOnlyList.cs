@@ -95,7 +95,7 @@ namespace Aocl
             {
                 return (0, index);
             }
-            var mostSignificantBitIndex = (int)Math.Log(index, 2);
+            var mostSignificantBitIndex = Math.FastIntegerLog2(index);
             return (mostSignificantBitIndex - (Bitness - 1), index - (1 << mostSignificantBitIndex));
         }
 
@@ -119,7 +119,7 @@ namespace Aocl
         /// </summary>
         /// <param name="value">
         /// The object to append.
-        /// </param>
+        /// </param>e
         public void Append(T value)
         {
             AppendLock.EnterWriteLock();
