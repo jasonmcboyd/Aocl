@@ -9,7 +9,6 @@ namespace Aocl
             Enumerable
             .Range(0, 1 << 8)
             .Select(x => x == 0 ? int.MinValue : (int)System.Math.Log(x, 2))
-            .Select(Convert.ToInt32)
             .ToArray();
 
         public static int FastIntegerLog2(int value)
