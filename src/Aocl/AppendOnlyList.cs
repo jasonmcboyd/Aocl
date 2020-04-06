@@ -185,16 +185,16 @@ namespace Aocl
         public IEnumerator<T> GetEnumerator()
         {
             var internalIndex = VirtualIndexToInternalIndex(Count - 1);
-            for (int i = 0; i < internalIndex.Item1; i++)
+            for (int i = 0; i < internalIndex.Partition; i++)
             {
                 for (int j = 0; j < Partitions[i].Count; j++)
                 {
                     yield return Partitions[i][j];
                 }
             }
-            for (int j = 0; j <= internalIndex.Item2; j++)
+            for (int j = 0; j <= internalIndex.Offset; j++)
             {
-                yield return Partitions[internalIndex.Item1][j];
+                yield return Partitions[internalIndex.Partition][j];
             }
         }
 

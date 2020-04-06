@@ -14,10 +14,22 @@ namespace Aocl
 
         public static int FastIntegerLog2(int value)
         {
-            if (value >= 1 << 24) { return LogLookup[value >> 24] + 24; }
-            else if (value >= 1 << 16) { return LogLookup[value >> 16] + 16; }
-            else if (value >= 1 << 8) { return LogLookup[value >> 8] + 8; }
-            else { return LogLookup[value]; }
+            if (value >= 1 << 24)
+            {
+                return LogLookup[value >> 24] + 24;
+            }
+            else if (value >= 1 << 16)
+            {
+                return LogLookup[value >> 16] + 16;
+            }
+            else if (value >= 1 << 8)
+            {
+                return LogLookup[value >> 8] + 8;
+            }
+            else
+            {
+                return LogLookup[value];
+            }
         }
     }
 }
