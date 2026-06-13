@@ -12,6 +12,7 @@
     <PackageDescription>A collection that supports thread-safe append-only writes and lock-free random access reads.</PackageDescription>
     <PackageId>Aocl</PackageId>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>appendonly;append-only;collection;collections;concurrent;eventsourcing;event-sourcing;ireadonlylist;list;log;readonlylist;threadsafe;thread-safe;thread safe</PackageTags>
     <RepositoryBranch>master</RepositoryBranch>
     <RepositoryUrl>https://github.com/jasonmcboyd/Aocl</RepositoryUrl>
@@ -22,6 +23,11 @@
   <!-- Expose internals to the test project -->
   <ItemGroup>
     <InternalsVisibleTo Include="Aocl.Tests" />
+  </ItemGroup>
+
+  <!-- Pack the repo-root README into the package so it renders on nuget.org -->
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
