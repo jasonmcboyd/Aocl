@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Aocl.Tests
@@ -206,6 +209,220 @@ namespace Aocl.Tests
 
       // Assert
       Assert.IsFalse(enumerator.MoveNext());
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Concurrency stress tests.
+    //
+    // REGRESSION GUARD, NOT A PROOF. These tests exercise lock-free readers against an active
+    // appender to guard against gross regressions of the publish/acquire contract: a reader that
+    // observes Count == N must see fully-published, correct elements at every index in [0, N) and
+    // must never read a default/garbage value or throw. The known sequence (value == index) makes
+    // every read independently verifiable.
+    //
+    // Note that passing these tests does NOT prove memory-ordering correctness. On x86/x64's strong
+    // memory model the underlying race can stay invisible even when the publishing barrier is wrong;
+    // the bug primarily bites on weak-ordered architectures such as ARM64. So treat these as a
+    // documented contract and a tripwire for obvious breakage, not as evidence of correctness.
+    // ---------------------------------------------------------------------------------------------
+
+    // Number of items the appender publishes. Sized for a ~1-3s CI run while still producing many
+    // partition transitions (each capacity-doubling boundary is a fresh partition slot the reader
+    // must traverse correctly).
+    private const int StressItemCount = 250_000;
+
+    // The value stored at index i. Kept trivial (identity) so the reader can verify each element in
+    // O(1) without any side table. Pulled into a method to document intent at the assertion sites.
+    private static int ExpectedValueFor(int index) => index;
+
+    [TestMethod]
+    [Timeout(30_000)]
+    public void Stress_ConcurrentReadersDuringAppend_IndexerAlwaysSeesPublishedValues()
+    {
+      // Arrange
+      var sut = new AppendOnlyList<int>(4);
+      var readerExceptions = new ConcurrentQueue<Exception>();
+      // Latches the highest Count any reader observed so we can confirm readers genuinely raced the
+      // appender (saw a moving target) rather than only running after it finished.
+      var maxObservedCount = 0;
+      using var done = new CountdownEvent(1);
+
+      // The appender: publishes the known sequence value == index for every index.
+      var appender = Task.Run(() =>
+      {
+        try
+        {
+          for (int i = 0; i < StressItemCount; i++)
+          {
+            sut.Append(ExpectedValueFor(i));
+          }
+        }
+        finally
+        {
+          done.Signal();
+        }
+      });
+
+      // Readers: while the appender runs, repeatedly snapshot Count and verify the prefix [0, n).
+      Action reader = () =>
+      {
+        try
+        {
+          while (!done.IsSet)
+          {
+            // Snapshot once; everything below [0, n) must be valid for this snapshot.
+            var n = sut.Count;
+            InterlockedMax(ref maxObservedCount, n);
+
+            if (n == 0)
+            {
+              continue;
+            }
+
+            // Spot-check the boundary (most likely to expose a half-published tail element) plus a
+            // stride sample across the snapshotted prefix. Checking the exact tail index n-1 is the
+            // point: it is the element most recently published relative to this Count read.
+            Assert.AreEqual(ExpectedValueFor(n - 1), sut[n - 1]);
+
+            var step = System.Math.Max(1, n / 64);
+            for (int i = 0; i < n; i += step)
+            {
+              Assert.AreEqual(ExpectedValueFor(i), sut[i]);
+            }
+          }
+
+          // Final pass: after the appender has finished, the full sequence must be intact.
+          var finalCount = sut.Count;
+          for (int i = 0; i < finalCount; i++)
+          {
+            Assert.AreEqual(ExpectedValueFor(i), sut[i]);
+          }
+        }
+        catch (Exception ex)
+        {
+          readerExceptions.Enqueue(ex);
+        }
+      };
+
+      // Act: run several concurrent readers alongside the single appender.
+      var readerCount = System.Math.Max(2, Environment.ProcessorCount - 1);
+      var readers = Enumerable.Range(0, readerCount)
+        .Select(_ => Task.Run(reader))
+        .ToArray();
+
+      Task.WaitAll(readers.Append(appender).ToArray());
+
+      // Assert
+      Assert.IsTrue(
+        readerExceptions.IsEmpty,
+        "Reader thread(s) observed inconsistent state: " +
+          string.Join(" | ", readerExceptions.Select(e => e.ToString())));
+      Assert.AreEqual(StressItemCount, sut.Count);
+      Assert.IsTrue(
+        maxObservedCount > 0,
+        "Readers never observed a non-empty list mid-append; the test did not exercise concurrency.");
+    }
+
+    [TestMethod]
+    [Timeout(30_000)]
+    public void Stress_ConcurrentEnumerationDuringAppend_YieldsContiguousExpectedSequence()
+    {
+      // Arrange
+      var sut = new AppendOnlyList<int>(4);
+      var readerExceptions = new ConcurrentQueue<Exception>();
+      var maxYielded = 0;
+      using var done = new CountdownEvent(1);
+
+      var appender = Task.Run(() =>
+      {
+        try
+        {
+          for (int i = 0; i < StressItemCount; i++)
+          {
+            sut.Append(ExpectedValueFor(i));
+          }
+        }
+        finally
+        {
+          done.Signal();
+        }
+      });
+
+      // Readers enumerate from a moving start index and assert the yielded values are exactly the
+      // contiguous expected sequence starting at that index. GetEnumerable walks across partition
+      // boundaries, so a mis-published partition slot or element would surface as a value mismatch
+      // (or an exception) rather than silently passing.
+      Action reader = () =>
+      {
+        try
+        {
+          var random = new Random(Environment.CurrentManagedThreadId);
+          while (!done.IsSet)
+          {
+            var n = sut.Count;
+            if (n == 0)
+            {
+              continue;
+            }
+
+            var start = random.Next(0, n);
+            var expected = start;
+            foreach (var value in sut.GetEnumerable(start))
+            {
+              Assert.AreEqual(ExpectedValueFor(expected), value);
+              expected++;
+            }
+
+            // The enumerator must have yielded a contiguous run from start up to at least the Count
+            // snapshot taken before enumeration began (it may yield more if the appender advanced).
+            Assert.IsTrue(
+              expected >= n,
+              $"Enumeration from {start} yielded only up to {expected}; expected at least {n}.");
+            InterlockedMax(ref maxYielded, expected);
+          }
+        }
+        catch (Exception ex)
+        {
+          readerExceptions.Enqueue(ex);
+        }
+      };
+
+      // Act
+      var readerCount = System.Math.Max(2, Environment.ProcessorCount - 1);
+      var readers = Enumerable.Range(0, readerCount)
+        .Select(_ => Task.Run(reader))
+        .ToArray();
+
+      Task.WaitAll(readers.Append(appender).ToArray());
+
+      // Assert
+      Assert.IsTrue(
+        readerExceptions.IsEmpty,
+        "Reader thread(s) observed inconsistent enumeration: " +
+          string.Join(" | ", readerExceptions.Select(e => e.ToString())));
+      Assert.AreEqual(StressItemCount, sut.Count);
+      Assert.IsTrue(
+        maxYielded > 0,
+        "Readers never enumerated any elements mid-append; the test did not exercise concurrency.");
+
+      // Final full enumeration must be the complete, contiguous sequence.
+      Assert.IsTrue(Enumerable.SequenceEqual(sut, Enumerable.Range(0, StressItemCount)));
+    }
+
+    // Lock-free monotonic max via compare-exchange. Used only to record observed progress for the
+    // "did we actually race?" assertions; it is not part of the contract under test.
+    private static void InterlockedMax(ref int target, int value)
+    {
+      var current = Volatile.Read(ref target);
+      while (value > current)
+      {
+        var observed = Interlocked.CompareExchange(ref target, value, current);
+        if (observed == current)
+        {
+          return;
+        }
+        current = observed;
+      }
     }
   }
 }

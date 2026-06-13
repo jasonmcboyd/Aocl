@@ -51,11 +51,9 @@ namespace Aocl
 
       Bitness = bitness;
       NextPartitionBitness = bitness;
-      var capacity = 32 - bitness + 1;
-      Partitions = new List<List<T>>(capacity)
-      {
-        new List<T>(BitnessToSize(Bitness))
-      };
+      Partitions = new T[MaxPartitionCount][];
+      Partitions[0] = new T[BitnessToSize(Bitness)];
+      PartitionCount = 1;
       AppendRange(collection);
     }
 
@@ -94,7 +92,7 @@ namespace Aocl
     {
       Debug.Assert(index >= 0, "Caller must pass a non-negative index to IndexToPartitionAndOffset.");
 
-      if (index < Partitions[0].Count)
+      if (index < Partitions[0].Length)
       {
         return new PartitionAndOffset(0, index);
       }
@@ -105,14 +103,37 @@ namespace Aocl
     }
 
     /// <summary>
-    /// Collection of collections that hold all the objects. By only appending new collections rather than copying objects to a new collection when the old collection is outgrown I am able to offer lock-free reads.
+    /// Upper bound on the number of partitions a list can ever need. The smallest allowed bitness (1)
+    /// produces partition sizes 2, 2, 4, 8, ... which together span the full int index range (2^31) by the
+    /// 31st partition; any larger bitness needs fewer. So 31 slots always suffice regardless of bitness.
     /// </summary>
-    private List<List<T>> Partitions { get; }
+    private const int MaxPartitionCount = 31;
 
     /// <summary>
-    /// Helper method that returns the current (always the last) collection in <see cref="Partitions"/>.
+    /// Fixed-size jagged array of partitions that together hold all the objects. Both the outer array
+    /// (sized at construction) and each inner partition (a fixed-length array) are never resized, moved,
+    /// or copied. Because a published element therefore never changes address, readers can index into the
+    /// partitions without locking; they rely solely on the <see cref="Count"/> memory fence to know an
+    /// element has been published.
     /// </summary>
-    private List<T> CurrentPartition => Partitions[Partitions.Count - 1];
+    private T[][] Partitions { get; }
+
+    /// <summary>
+    /// Number of populated slots in <see cref="Partitions"/>. Writer-only state guarded by
+    /// <see cref="AppendLock"/>; readers never consult it because they derive the partition from the index.
+    /// </summary>
+    private int PartitionCount { get; set; }
+
+    /// <summary>
+    /// Next free slot in the current (last populated) partition. Writer-only state guarded by
+    /// <see cref="AppendLock"/>; reset to 0 whenever a partition is added.
+    /// </summary>
+    private int WriteOffset { get; set; }
+
+    /// <summary>
+    /// Helper method that returns the current (always the last populated) partition in <see cref="Partitions"/>.
+    /// </summary>
+    private T[] CurrentPartition => Partitions[PartitionCount - 1];
 
     /// <summary>
     /// Lock used to ensure only one writer at a time.
@@ -124,20 +145,25 @@ namespace Aocl
     /// </summary>
     /// <param name="value">
     /// The object to append.
-    /// </param>e
+    /// </param>
     public void Append(T value)
     {
       AppendLock.EnterWriteLock();
       try
       {
         var current = CurrentPartition;
-        if (current.Count == current.Capacity)
+        // Move to a fresh partition once the current one is full. Each partition is a fixed-length array,
+        // so a published element never moves - the property that makes lock-free indexed reads safe.
+        if (WriteOffset == current.Length)
         {
-          AddPartition();
-          current = CurrentPartition;
+          current = AddPartition();
         }
-        current.Add(value);
-        Count++;
+        current[WriteOffset] = value;
+        WriteOffset++;
+        // Publish the element (and any partition added above) with release semantics. This volatile write
+        // must be the last write of the append so a lock-free reader that observes the new Count is
+        // guaranteed to observe the data behind it. See the Count property.
+        Volatile.Write(ref _count, _count + 1);
       }
       finally
       {
@@ -159,13 +185,14 @@ namespace Aocl
         var current = CurrentPartition;
         foreach (var value in values)
         {
-          if (current.Count == current.Capacity)
+          if (WriteOffset == current.Length)
           {
-            AddPartition();
-            current = CurrentPartition;
+            current = AddPartition();
           }
-          current.Add(value);
-          Count++;
+          current[WriteOffset] = value;
+          WriteOffset++;
+          // Release-publish each element as the last write of its iteration (see Append / the Count property).
+          Volatile.Write(ref _count, _count + 1);
         }
       }
       finally
@@ -177,11 +204,16 @@ namespace Aocl
     /// <summary>
     /// Adds a new partition and handles the "bookkeeping" associated with adding a partition.
     /// </summary>
-    private void AddPartition()
+    private T[] AddPartition()
     {
-      var partition = new List<T>(BitnessToSize(NextPartitionBitness));
-      Partitions.Add(partition);
+      // Writes into the pre-allocated jagged-array slot; this store precedes the element write and the
+      // Volatile.Write of Count in the calling append, so it is published by that same release.
+      var partition = new T[BitnessToSize(NextPartitionBitness)];
+      Partitions[PartitionCount] = partition;
+      PartitionCount++;
       NextPartitionBitness++;
+      WriteOffset = 0;
+      return partition;
     }
 
     /// <summary>
@@ -225,7 +257,7 @@ namespace Aocl
 
         offset++;
 
-        if (offset >= Partitions[partition].Capacity)
+        if (offset >= Partitions[partition].Length)
         {
           offset = 0;
           partition++;
@@ -249,8 +281,17 @@ namespace Aocl
     }
 
     /// <summary>
+    /// Backing field for <see cref="Count"/>. Written only under <see cref="AppendLock"/> with a
+    /// Volatile.Write as the final step of an append, and read by lock-free readers with a Volatile.Read
+    /// through the <see cref="Count"/> getter. This release/acquire pair is the sole cross-thread
+    /// synchronization: the release orders every preceding data write before the count becomes visible,
+    /// so a reader that sees an index below Count is guaranteed to see the element at that index.
+    /// </summary>
+    private int _count;
+
+    /// <summary>
     /// Gets the number of elements contained in the <see cref="AppendOnlyList{T}"/>.
     /// </summary>
-    public int Count { get; private set; }
+    public int Count => Volatile.Read(ref _count);
   }
 }
