@@ -45,7 +45,7 @@ namespace Aocl
     {
       if (bitness < 1)
       {
-        throw new ArgumentOutOfRangeException("Must be greater than zero.", nameof(bitness));
+        throw new ArgumentOutOfRangeException(nameof(bitness), "Must be greater than zero.");
       }
 
       Bitness = bitness;
