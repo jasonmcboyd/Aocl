@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -124,17 +125,15 @@ namespace Aocl.Tests
     }
 
     [TestMethod]
-    public void GetEnumerable_StartIndexLessThanZero_CorrectValuesReturned()
+    public void GetEnumerable_StartIndexLessThanZero_ThrowsArgumentOutOfRangeException()
     {
       // Arrange
       var numbers = Enumerable.Range(0, 3);
       var sut = new AppendOnlyList<int>(numbers);
 
-      // Act
-      var enumerable = sut.GetEnumerable(-1);
-
-      // Assert
-      Assert.IsTrue(Enumerable.SequenceEqual(enumerable, numbers));
+      // Act / Assert: validation is eager, so the call itself throws without
+      // needing to enumerate the result.
+      Assert.ThrowsException<ArgumentOutOfRangeException>(() => sut.GetEnumerable(-1));
     }
 
     [TestMethod]

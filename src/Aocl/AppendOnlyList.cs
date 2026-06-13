@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -69,7 +70,7 @@ namespace Aocl
     private int NextPartitionBitness { get; set; }
 
     /// <summary>
-    /// Calcualtes size from bits. Size is 2^<see cref="bitness"/>.
+    /// Calculates size from bits. Size is 2^<see cref="bitness"/>.
     /// </summary>
     /// <param name="bitness">
     /// Number of bits.
@@ -91,6 +92,8 @@ namespace Aocl
     /// </param>
     private PartitionAndOffset IndexToPartitionAndOffset(int index)
     {
+      Debug.Assert(index >= 0, "Caller must pass a non-negative index to IndexToPartitionAndOffset.");
+
       if (index < Partitions[0].Count)
       {
         return new PartitionAndOffset(0, index);
@@ -194,10 +197,26 @@ namespace Aocl
     /// <inheritdoc cref="IAppendOnlyList{T}.GetEnumerable"/>
     public IEnumerable<T> GetEnumerable(int startIndex)
     {
-      var index = System.Math.Max(0, startIndex);
+      // Validate eagerly so the exception surfaces at the call site rather than
+      // being deferred to the first MoveNext() of the iterator below.
+      if (startIndex < 0)
+      {
+        throw new ArgumentOutOfRangeException(nameof(startIndex));
+      }
 
-      (var partition, var offset) = IndexToPartitionAndOffset(index);
+      return GetEnumerableIterator(startIndex);
+    }
 
+    private IEnumerable<T> GetEnumerableIterator(int startIndex)
+    {
+      if (startIndex >= Count)
+      {
+        yield break;
+      }
+
+      (var partition, var offset) = IndexToPartitionAndOffset(startIndex);
+
+      var index = startIndex;
       while (index < Count)
       {
         yield return Partitions[partition][offset];
@@ -219,9 +238,9 @@ namespace Aocl
     {
       get
       {
-        if (index >= Count)
+        if (index < 0 || index >= Count)
         {
-          throw new IndexOutOfRangeException();
+          throw new ArgumentOutOfRangeException(nameof(index));
         }
 
         var internalIndex = IndexToPartitionAndOffset(index);
