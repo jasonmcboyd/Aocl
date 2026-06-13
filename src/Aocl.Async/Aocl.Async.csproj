@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <!-- The IAsyncEnumerable adapter lives here, not in core Aocl, so the core stays dependency-free.
+       This is the one project that takes Microsoft.Bcl.AsyncInterfaces (for IAsyncEnumerable on ns2.0). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aocl\Aocl.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Aocl\Aocl.csproj" />
+    <ProjectReference Include="..\Aocl.Async\Aocl.Async.csproj" />
   </ItemGroup>
 
 </Project>
