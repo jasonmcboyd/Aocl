@@ -44,9 +44,9 @@ namespace Aocl
     /// </param>
     public AppendOnlyList(IEnumerable<T> collection, int bitness = 4)
     {
-      if (bitness < 1)
+      if (bitness < 1 || bitness > 30)
       {
-        throw new ArgumentOutOfRangeException(nameof(bitness), "Must be greater than zero.");
+        throw new ArgumentOutOfRangeException(nameof(bitness), "Must be between 1 and 30 inclusive.");
       }
 
       Bitness = bitness;
@@ -71,16 +71,10 @@ namespace Aocl
     /// Calculates size from bits. Size is 2^<see cref="bitness"/>.
     /// </summary>
     /// <param name="bitness">
-    /// Number of bits.
+    /// Number of bits. Always at least 1 (the constructor rejects a smaller bitness, and partition
+    /// bitnesses only grow from there), so the result never overflows for the values actually used.
     /// </param>
-    private int BitnessToSize(int bitness)
-    {
-      if (bitness == 0)
-      {
-        return 0;
-      }
-      return 1 << bitness;
-    }
+    private int BitnessToSize(int bitness) => 1 << bitness;
 
     /// <summary>
     /// Returns the partition and offset represented by the index.
@@ -103,9 +97,10 @@ namespace Aocl
     }
 
     /// <summary>
-    /// Upper bound on the number of partitions a list can ever need. The smallest allowed bitness (1)
-    /// produces partition sizes 2, 2, 4, 8, ... which together span the full int index range (2^31) by the
-    /// 31st partition; any larger bitness needs fewer. So 31 slots always suffice regardless of bitness.
+    /// Upper bound on the number of partitions a list can ever need. The worst case is the smallest
+    /// allowed bitness (1): its partition sizes 2, 2, 4, 8, ... reach a combined capacity of 2^31 at the
+    /// 31st partition - enough to hold the maximum int.MaxValue (2^31 - 1) elements. Any larger bitness
+    /// needs fewer partitions, so 31 always suffices. (No single partition exceeds 2^30.)
     /// </summary>
     private const int MaxPartitionCount = 31;
 
@@ -136,9 +131,11 @@ namespace Aocl
     private T[] CurrentPartition => Partitions[PartitionCount - 1];
 
     /// <summary>
-    /// Lock used to ensure only one writer at a time.
+    /// Lock that serializes writers; readers are lock-free and never take it. A plain Monitor lock,
+    /// whose uncontended acquire is a cheap user-mode operation - only writers ever contend, so the
+    /// reader/writer distinction of a ReaderWriterLockSlim would be wasted here.
     /// </summary>
-    private ReaderWriterLockSlim AppendLock { get; } = new ReaderWriterLockSlim();
+    private readonly object AppendLock = new object();
 
     /// <summary>
     /// Appends an object to the end of the <see cref="AppendOnlyList{T}"/>.
@@ -148,8 +145,7 @@ namespace Aocl
     /// </param>
     public void Append(T value)
     {
-      AppendLock.EnterWriteLock();
-      try
+      lock (AppendLock)
       {
         var current = CurrentPartition;
         // Move to a fresh partition once the current one is full. Each partition is a fixed-length array,
@@ -165,10 +161,6 @@ namespace Aocl
         // guaranteed to observe the data behind it. See the Count property.
         Volatile.Write(ref _count, _count + 1);
       }
-      finally
-      {
-        AppendLock.ExitWriteLock();
-      }
     }
 
     /// <summary>
@@ -179,8 +171,7 @@ namespace Aocl
     /// </param>
     public void AppendRange(IEnumerable<T> values)
     {
-      AppendLock.EnterWriteLock();
-      try
+      lock (AppendLock)
       {
         var current = CurrentPartition;
         foreach (var value in values)
@@ -194,10 +185,6 @@ namespace Aocl
           // Release-publish each element as the last write of its iteration (see Append / the Count property).
           Volatile.Write(ref _count, _count + 1);
         }
-      }
-      finally
-      {
-        AppendLock.ExitWriteLock();
       }
     }
 

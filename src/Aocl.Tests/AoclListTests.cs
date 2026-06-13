@@ -211,6 +211,18 @@ namespace Aocl.Tests
       Assert.IsFalse(enumerator.MoveNext());
     }
 
+    [DataTestMethod]
+    [DataRow(int.MinValue)]
+    [DataRow(-1)]
+    [DataRow(0)]
+    [DataRow(31)]  // 1 << 31 overflows int to a negative size
+    [DataRow(32)]  // 1 << 32 silently wraps to 1 (C# masks the shift count to 5 bits)
+    [DataRow(int.MaxValue)]
+    public void Constructor_BitnessOutOfRange_ThrowsArgumentOutOfRangeException(int bitness)
+    {
+      Assert.ThrowsException<ArgumentOutOfRangeException>(() => new AppendOnlyList<int>(bitness));
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Concurrency stress tests.
     //
