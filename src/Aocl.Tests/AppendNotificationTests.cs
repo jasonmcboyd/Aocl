@@ -77,11 +77,11 @@ namespace Aocl.Tests
     }
 
     // -----------------------------------------------------------------------------------------
-    // Tail (IAsyncEnumerable adapter)
+    // ReadAllAsync (IAsyncEnumerable adapter)
     // -----------------------------------------------------------------------------------------
 
     [TestMethod]
-    public async Task Tail_YieldsExistingThenAppended()
+    public async Task ReadAllAsync_YieldsExistingThenAppended()
     {
       var sut = new AppendOnlyList<int>(new[] { 0, 1, 2 });
       using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -94,7 +94,7 @@ namespace Aocl.Tests
         sut.Append(4);
       });
 
-      await foreach (var item in sut.Tail(0, cts.Token))
+      await foreach (var item in sut.ReadAllAsync(0, cts.Token))
       {
         received.Add(item);
         if (received.Count == 5)
@@ -108,13 +108,13 @@ namespace Aocl.Tests
     }
 
     [TestMethod]
-    public async Task Tail_FromStartIndex_SkipsEarlierElements()
+    public async Task ReadAllAsync_FromStartIndex_SkipsEarlierElements()
     {
       var sut = new AppendOnlyList<int>(Enumerable.Range(0, 5));
       using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
       var received = new List<int>();
 
-      await foreach (var item in sut.Tail(2, cts.Token))
+      await foreach (var item in sut.ReadAllAsync(2, cts.Token))
       {
         received.Add(item);
         if (received.Count == 3)
@@ -127,23 +127,23 @@ namespace Aocl.Tests
     }
 
     [TestMethod]
-    public void Tail_NegativeStartIndex_ThrowsEagerly()
+    public void ReadAllAsync_NegativeStartIndex_ThrowsEagerly()
     {
       var sut = new AppendOnlyList<int>();
 
       // Eager: the bad argument throws on the call, not on the first MoveNextAsync.
-      Assert.ThrowsException<ArgumentOutOfRangeException>(() => sut.Tail(-1));
+      Assert.ThrowsException<ArgumentOutOfRangeException>(() => sut.ReadAllAsync(-1));
     }
 
     [TestMethod]
-    public async Task Tail_Cancellation_StopsAStreamThatIsCaughtUp()
+    public async Task ReadAllAsync_Cancellation_StopsAStreamThatIsCaughtUp()
     {
       var sut = new AppendOnlyList<int>();
       using var cts = new CancellationTokenSource();
 
       var consumer = Task.Run(async () =>
       {
-        await foreach (var _ in sut.Tail(0, cts.Token))
+        await foreach (var _ in sut.ReadAllAsync(0, cts.Token))
         {
         }
       });
@@ -166,7 +166,7 @@ namespace Aocl.Tests
     }
 
     [TestMethod]
-    public async Task Tail_ReceivesEveryAppend_NoLostWakeup()
+    public async Task ReadAllAsync_ReceivesEveryAppend_NoLostWakeup()
     {
       // The real correctness test: a tail-follower must receive every appended element, in order, with no
       // loss and (critically) no hang. A lost wakeup would leave the consumer parked forever; the timeout
@@ -178,7 +178,7 @@ namespace Aocl.Tests
 
       var consumer = Task.Run(async () =>
       {
-        await foreach (var item in sut.Tail(0, cts.Token))
+        await foreach (var item in sut.ReadAllAsync(0, cts.Token))
         {
           received.Add(item);
           if (received.Count == count)

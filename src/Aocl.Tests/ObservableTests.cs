@@ -10,7 +10,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace Aocl.Tests
 {
   [TestClass]
-  public class ObservableTailTests
+  public class ObservableTests
   {
     [TestMethod]
     public async Task ToObservable_EmitsExistingThenAppended()

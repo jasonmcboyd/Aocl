@@ -11,21 +11,21 @@ namespace Aocl
   public static class AppendOnlyListAsyncExtensions
   {
     /// <summary>
-    /// Streams the list from <paramref name="startIndex"/> and then follows it: yields every element already
+    /// Reads the list from <paramref name="startIndex"/> and then keeps reading: yields every element already
     /// present, then awaits new appends - via the list's append signal, with no polling - and yields them as
-    /// they arrive. The sequence is infinite by nature (an append-only list never "completes"); stop it by
-    /// cancelling <paramref name="cancellationToken"/>.
+    /// they arrive. Like a channel's ReadAllAsync, the sequence does not complete on its own (an append-only
+    /// list has no end); stop it by cancelling <paramref name="cancellationToken"/>.
     /// </summary>
     /// <remarks>
-    /// Pass the token to this method directly (e.g. <c>source.Tail(0, ct)</c>); the iterator uses it both to
-    /// wake from the append wait and to stop. Each enumerator keeps its own cursor and reads straight from the
-    /// list's lock-free indexer, so multiple consumers can tail the same list concurrently with no shared
-    /// buffering and no impact on writers.
+    /// Pass the token to this method directly (e.g. <c>source.ReadAllAsync(0, ct)</c>); the iterator uses it
+    /// both to wake from the append wait and to stop. Each enumerator keeps its own cursor and reads straight
+    /// from the list's lock-free indexer, so multiple consumers can read the same list concurrently with no
+    /// shared buffering and no impact on writers.
     ///
-    /// Note that once a tail has caught up it is suspended inside the append wait, so the way to stop it is to
-    /// cancel the token - breaking out of the enumeration only takes effect while elements are being yielded.
+    /// Once a reader has caught up it is suspended inside the append wait, so the way to stop it is to cancel
+    /// the token - breaking out of the enumeration only takes effect while elements are being yielded.
     /// </remarks>
-    public static IAsyncEnumerable<T> Tail<T>(
+    public static IAsyncEnumerable<T> ReadAllAsync<T>(
       this IAppendOnlyList<T> source,
       int startIndex = 0,
       CancellationToken cancellationToken = default)
@@ -42,10 +42,10 @@ namespace Aocl
         throw new ArgumentOutOfRangeException(nameof(startIndex));
       }
 
-      return TailIterator(source, startIndex, cancellationToken);
+      return ReadAllAsyncIterator(source, startIndex, cancellationToken);
     }
 
-    private static async IAsyncEnumerable<T> TailIterator<T>(
+    private static async IAsyncEnumerable<T> ReadAllAsyncIterator<T>(
       IAppendOnlyList<T> source,
       int startIndex,
       [EnumeratorCancellation] CancellationToken cancellationToken)
