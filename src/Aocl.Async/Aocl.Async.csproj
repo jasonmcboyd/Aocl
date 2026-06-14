@@ -5,6 +5,21 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
+  <!-- NuGet Package Metadata -->
+  <PropertyGroup>
+    <Authors>Jason Boyd</Authors>
+    <IncludeSymbols>true</IncludeSymbols>
+    <PackageDescription>Async streaming (IAsyncEnumerable) extensions for Aocl's AppendOnlyList. Adds ReadAllAsync to follow an append-only list as it grows, with no polling.</PackageDescription>
+    <PackageId>Aocl.Async</PackageId>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>appendonly;append-only;collection;async;iasyncenumerable;streaming;channel;aocl</PackageTags>
+    <RepositoryBranch>master</RepositoryBranch>
+    <RepositoryUrl>https://github.com/jasonmcboyd/Aocl</RepositoryUrl>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
   <!-- The IAsyncEnumerable adapter lives here, not in core Aocl, so the core stays dependency-free.
        This is the one project that takes Microsoft.Bcl.AsyncInterfaces (for IAsyncEnumerable on ns2.0). -->
   <ItemGroup>
@@ -13,6 +28,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Aocl\Aocl.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
