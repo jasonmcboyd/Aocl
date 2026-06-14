@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <!-- NuGet Package Metadata -->
+  <PropertyGroup>
+    <Authors>Jason Boyd</Authors>
+    <IncludeSymbols>true</IncludeSymbols>
+    <PackageDescription>Reactive (System.Reactive) extensions for Aocl's AppendOnlyList. Adds ToObservable to expose an append-only list as an IObservable that emits elements as they are appended, with no polling.</PackageDescription>
+    <PackageId>Aocl.Reactive</PackageId>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>appendonly;append-only;collection;reactive;rx;iobservable;system.reactive;streaming;aocl</PackageTags>
+    <RepositoryBranch>master</RepositoryBranch>
+    <RepositoryUrl>https://github.com/jasonmcboyd/Aocl</RepositoryUrl>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <!-- The IObservable adapter lives here with its System.Reactive dependency, so core Aocl stays
+       dependency-free. Consumers who want an IObservable already have System.Reactive referenced. -->
+  <ItemGroup>
+    <PackageReference Include="System.Reactive" Version="6.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aocl\Aocl.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

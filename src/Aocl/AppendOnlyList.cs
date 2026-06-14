@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Aocl
 {
@@ -78,6 +79,15 @@ namespace Aocl
     /// Gets the number of elements contained in the <see cref="AppendOnlyList{T}"/>.
     /// </summary>
     public int Count => Volatile.Read(ref _Count);
+
+    /// <summary>
+    /// The "doorbell" for appends: a lazily-created source shared by all waiters that represents "the next
+    /// append." A waiter awaits its task; an append completes it (waking every waiter) and clears the field.
+    /// The field is null whenever no one is waiting, so an idle list allocates nothing and an unobserved
+    /// append costs only an interlocked exchange of null. It is created with RunContinuationsAsynchronously
+    /// so completing it never runs a waiter's continuation on the appending thread.
+    /// </summary>
+    private TaskCompletionSource<bool> _AppendSignal;
 
     /// <summary>
     /// Size (in bits) of the first partition.
@@ -174,6 +184,9 @@ namespace Aocl
         // must be the last write of the append so a lock-free reader that observes the new Count is
         // guaranteed to observe the data behind it. See the Count property.
         Volatile.Write(ref _Count, _Count + 1);
+        // Wake any consumer parked in WaitForAppendAsync. Done after the Count publish so a woken waiter
+        // that reads Count is guaranteed to see this element.
+        SignalAppend();
       }
     }
 
@@ -188,6 +201,7 @@ namespace Aocl
       lock (AppendLock)
       {
         var current = CurrentPartition;
+        var appended = false;
         foreach (var value in values)
         {
           if (WriteOffset == current.Length)
@@ -198,9 +212,71 @@ namespace Aocl
           WriteOffset++;
           // Release-publish each element as the last write of its iteration (see Append / the Count property).
           Volatile.Write(ref _Count, _Count + 1);
+          appended = true;
+        }
+        // One wake per batch rather than per element: a woken waiter re-reads Count and drains the whole range.
+        if (appended)
+        {
+          SignalAppend();
         }
       }
     }
+
+    /// <summary>
+    /// Returns a task that completes the next time an element is appended, letting a consumer follow the list
+    /// without polling. The task carries no payload - it is purely a signal to "go read."
+    /// </summary>
+    /// <remarks>
+    /// To avoid a lost wakeup, use a register-then-recheck pattern: capture this task FIRST, then re-check
+    /// <see cref="Count"/>. If Count has advanced, an append landed during registration - drain the new
+    /// elements instead of awaiting. Only await when still caught up. A single signal serves all waiters, so
+    /// each waiter reads whatever is new relative to its own cursor.
+    /// </remarks>
+    /// <param name="cancellationToken">Cancels the wait for this caller only; other waiters are unaffected.</param>
+    public Task WaitForAppendAsync(CancellationToken cancellationToken = default)
+    {
+      if (cancellationToken.IsCancellationRequested)
+      {
+        return Task.FromCanceled(cancellationToken);
+      }
+
+      // Lazily publish the shared signal so a list with no waiters allocates nothing. If another waiter (or an
+      // append clearing the field) raced us, use whatever actually ended up in the field.
+      var signal = Volatile.Read(ref _AppendSignal);
+      if (signal is null)
+      {
+        var created = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        signal = Interlocked.CompareExchange(ref _AppendSignal, created, null) ?? created;
+      }
+
+      return cancellationToken.CanBeCanceled
+        ? AwaitWithCancellation(signal.Task, cancellationToken)
+        : signal.Task;
+    }
+
+    /// <summary>
+    /// Races the shared signal against this caller's cancellation token without disturbing the signal itself,
+    /// so cancelling one waiter never cancels the others. (netstandard2.0 has no Task.WaitAsync, hence the
+    /// manual WhenAny.)
+    /// </summary>
+    private static async Task AwaitWithCancellation(Task signal, CancellationToken cancellationToken)
+    {
+      var cancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+      using (cancellationToken.Register(state => ((TaskCompletionSource<bool>)state).TrySetResult(true), cancelled))
+      {
+        if (await Task.WhenAny(signal, cancelled.Task).ConfigureAwait(false) == cancelled.Task)
+        {
+          cancellationToken.ThrowIfCancellationRequested();
+        }
+      }
+    }
+
+    /// <summary>
+    /// Wakes any waiters by completing and clearing the current append signal. A no-op (a single interlocked
+    /// exchange of null) when nobody is waiting. Because the source completes its continuations asynchronously,
+    /// this never runs waiter code on the appending thread.
+    /// </summary>
+    private void SignalAppend() => Interlocked.Exchange(ref _AppendSignal, null)?.TrySetResult(true);
 
     /// <summary>
     /// Adds a new partition and handles the "bookkeeping" associated with adding a partition.

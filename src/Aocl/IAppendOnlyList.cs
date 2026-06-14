@@ -1,5 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Aocl
 {
@@ -38,5 +40,13 @@ namespace Aocl
     /// </summary>
     /// <param name="startIndex">The index the enumerable starts at.</param>
     IEnumerable<T> GetEnumerable(int startIndex);
+
+    /// <summary>
+    /// Returns a task that completes the next time an element is appended, letting a consumer follow the
+    /// collection without polling. Capture the task before re-checking <see cref="Count"/> to avoid a lost
+    /// wakeup. The task is a signal only; it carries no appended value.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the wait for this caller only.</param>
+    Task WaitForAppendAsync(CancellationToken cancellationToken = default);
   }
 }
