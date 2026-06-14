@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Aocl\Aocl.csproj" />
     <ProjectReference Include="..\Aocl.Async\Aocl.Async.csproj" />
+    <ProjectReference Include="..\Aocl.Reactive\Aocl.Reactive.csproj" />
   </ItemGroup>
 
 </Project>
